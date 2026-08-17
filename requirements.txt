@@ -1,0 +1,9 @@
+pylate
+langchain
+langchain-openai
+langchain-community
+duckduckgo-search
+ddgs
+supabase
+beautifulsoup4
+langgraph-cli
