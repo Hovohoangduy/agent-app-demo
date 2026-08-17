@@ -7,3 +7,4 @@ ddgs
 supabase
 beautifulsoup4
 langgraph-cli
+langchain-chroma
