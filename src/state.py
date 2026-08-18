@@ -1,12 +1,22 @@
 import hashlib
 import uuid
-from typing import Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 from langchain_core.documents import Document
+from langgraph.graph import MessagesState
+from dataclasses import dataclass, field
 
 def _generate_uuid(page_content: str) -> str:
     """Generate a UUID for a document based on page content."""
     md5_hash = hashlib.md5(page_content.encode()).hexdigest()
     return str(uuid.UUID(md5_hash))
+
+
+def _document_from_dict(item: dict[str, Any]) -> Document:
+    """Create a Document from JSON using either LangChain or JS-style keys."""
+    page_content = item.get("page_content", item.get("pageContent", ""))
+    metadata = item.get("metadata") or {}
+    item_id = metadata.get("uuid") or _generate_uuid(page_content)
+    return Document(page_content=page_content, metadata={**metadata, "uuid": item_id})
 
 def reduce_docs(
         existing: Optional[list[Document]],
@@ -33,28 +43,42 @@ def reduce_docs(
     if new == "delete":
         return []
 
+    if new is None:
+        return list(existing) if existing else []
+
     existing_list = list(existing) if existing else []
-    if isinstance(new, Any):
+    existing_ids = {doc.metadata.get("uuid") for doc in existing_list}
+
+    if isinstance(new, str):
+        item_id = _generate_uuid(new)
+        if item_id in existing_ids:
+            return existing_list
         return existing_list + [
-            Document(page_content=new, metadata={"uuid": _generate_uuid(new)})
+            Document(page_content=new, metadata={"uuid": item_id})
         ]
+
+    if isinstance(new, Document):
+        item_id = new.metadata.get("uuid") or _generate_uuid(new.page_content)
+        if item_id in existing_ids:
+            return existing_list
+
+        new_item = new.copy(deep=True)
+        new_item.metadata["uuid"] = item_id
+        return existing_list + [new_item]
 
     new_list = []
     if isinstance(new, list):
-        existing_ids = set(doc.metadata.get("uuid") for doc in existing_list)
         for item in new:
             if isinstance(item, str):
                 item_id = _generate_uuid(item)
-                new_list.append(Document(page_content=item, metadata={"uuid": item_id}))
-                existing_ids.add(item_id)
-            elif isinstance(item, dict):
-                metadata = item.get("metadata", {})
-                item_id = metadata.get("uuid") or _generate_uuid(item.get("page_content", ""))
-
                 if item_id not in existing_ids:
-                    new_list.append(
-                        Document(**{**item, "metadata": {**metadata, "uuid": item_id}})
-                    )
+                    new_list.append(Document(page_content=item, metadata={"uuid": item_id}))
+                    existing_ids.add(item_id)
+            elif isinstance(item, dict):
+                new_item = _document_from_dict(item)
+                item_id = new_item.metadata["uuid"]
+                if item_id not in existing_ids:
+                    new_list.append(new_item)
                     existing_ids.add(item_id)
             elif isinstance(item, Document):
                 item_id = item.metadata.get("uuid", "")
@@ -69,3 +93,19 @@ def reduce_docs(
                     new_list.append(new_item)
                     existing_ids.add(item_id)
     return existing_list + new_list
+
+# The index state defines the simple IO for the single-node index graph
+@dataclass
+class IndexState:
+    """Represents the state for document indexing and retrieval.
+    This class defines the structure of the index state, 
+    which includes the documents to indexed and the retriever used for searching these documents."""
+    docs: Annotated[list[Document], reduce_docs] = field(
+        default_factory=list,
+        metadata={"description": "A list of documents that the agent can index."}
+    )
+
+class AgentState(MessagesState):
+    query: str
+    route: str
+    documents: Annotated[list[Document], reduce_docs]

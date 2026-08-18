@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
-from typing import Annotated, Literal, Optional, Type, TypeVar, Any
+from typing import Annotated, Any, Literal, Optional, Type, TypeVar
 from langchain_core.runnables import RunnableConfig, ensure_config
 
 
-DEFAULT_DOCS_FILE = "src/docSplits.json"
+DEFAULT_DOCS_FILE = "json/docSplits.json"
+T = TypeVar("T")
 
 @dataclass(kw_only=True)
 class BaseConfiguration:
@@ -23,19 +24,19 @@ class BaseConfiguration:
     )
 
     retriever_provider: Annotated[
-        Literal["supbase", "chroma"],
+        Literal["supabase", "chroma"],
         {"__template_metadata__": {"kind": "retriever"}},
     ] = field(
         default="chroma",
         metadata={
-            "description": "The vector store provider to use for retrieval. Options are `supbase` or `chroma`."
+            "description": "The vector store provider to use for retrieval. Options are `supabase` or `chroma`."
         },
     )
 
     search_kwargs: dict[str, Any] = field(
         default_factory=dict,
         metadata={
-            "desciption": "Additional keyword arguments to pass to the search function of the retriever."
+            "description": "Additional keyword arguments to pass to the search function of the retriever."
         },
     )
 
@@ -77,19 +78,19 @@ class IndexConfiguration:
     )
 
     retriever_provider: Annotated[
-        Literal["supbase", "chroma"],
+        Literal["supabase", "chroma"],
         {"__template_metadata__": {"kind": "retriever"}},
     ] = field(
         default="chroma",
         metadata={
-            "description": "The vector store provider to use for retrieval. Options are `supbase` or `chroma`."
+            "description": "The vector store provider to use for retrieval. Options are `supabase` or `chroma`."
         },
     )
 
     search_kwargs: dict[str, Any] = field(
         default_factory=dict,
         metadata={
-            "desciption": "Additional keyword arguments to pass to the search function of the retriever."
+            "description": "Additional keyword arguments to pass to the search function of the retriever."
         },
     )
 
@@ -108,4 +109,11 @@ class IndexConfiguration:
         _fields = {f.name for f in fields(cls) if f.init}
         return cls(**{k: v for k, v in configurable.items() if k in _fields})
 
-T = TypeVar("T", bound=IndexConfiguration)
+
+@dataclass(kw_only=True)
+class Configuration(BaseConfiguration):
+    """The configuration for the agent."""
+    query_model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
+        default="gpt-5.4-mini",
+        metadata={"description": "The language model used for processing and refining queries. Should be in the form: provider/model-name."}
+    )
