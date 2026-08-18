@@ -65,6 +65,19 @@ def make_chroma_vectorstore(configuration: BaseConfiguration, embedding_model: E
 
 
 @contextmanager
+def make_pgvector_vectorstore(configuration: BaseConfiguration, embedding_model: Embeddings):
+    connection_string = "postgresql+psycopg2://langchain:langchain@localhost:6024/langchain"
+    from langchain_community.vectorstores import PGVector
+    
+    vectorstore = PGVector(
+        connection_string=connection_string,
+        embedding_function=embedding_model,
+        collection_name="documents"
+    )
+    yield vectorstore
+
+
+@contextmanager
 def make_vectorstore(config: ConfigurationLike):
     """Create a vector store based on the current configuration."""
     configuration = _resolve_configuration(config)
@@ -74,6 +87,9 @@ def make_vectorstore(config: ConfigurationLike):
             yield vectorstore
     elif configuration.retriever_provider == "chroma":
         with make_chroma_vectorstore(configuration, embedding_model) as vectorstore:
+            yield vectorstore
+    elif configuration.retriever_provider == "pgvector":
+        with make_pgvector_vectorstore(configuration, embedding_model) as vectorstore:
             yield vectorstore
     else:
         raise ValueError(

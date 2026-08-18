@@ -24,12 +24,12 @@ class BaseConfiguration:
     )
 
     retriever_provider: Annotated[
-        Literal["supabase", "chroma"],
+        Literal["supabase", "chroma", "pgvector"],
         {"__template_metadata__": {"kind": "retriever"}},
     ] = field(
-        default="chroma",
+        default="pgvector",
         metadata={
-            "description": "The vector store provider to use for retrieval. Options are `supabase` or `chroma`."
+            "description": "The vector store provider to use for retrieval. Options are `supabase`, `chroma`, or `pgvector`."
         },
     )
 
@@ -78,12 +78,12 @@ class IndexConfiguration:
     )
 
     retriever_provider: Annotated[
-        Literal["supabase", "chroma"],
+        Literal["supabase", "chroma", "pgvector"],
         {"__template_metadata__": {"kind": "retriever"}},
     ] = field(
-        default="chroma",
+        default="pgvector",
         metadata={
-            "description": "The vector store provider to use for retrieval. Options are `supabase` or `chroma`."
+            "description": "The vector store provider to use for retrieval. Options are `supabase`, `chroma`, or `pgvector`."
         },
     )
 

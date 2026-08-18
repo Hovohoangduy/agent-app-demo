@@ -1,40 +1,57 @@
-import asyncio
+import sys
 import os
-from langgraph_sdk import get_client
+import uuid
 
-async def invoke_retrieval_assistant():
-    # Initialize the Langgraph client
-    deployment_url = os.getenv("LANGGRAPH_DEPLOYMENT_URL", "http://localhost:2026")
-    client = get_client(url=deployment_url)
+# Add src to python path to allow importing from src
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 
-    try:
-        # create new thread
-        thread = await client.threads.create(
-            metadata={
-                "user_id": "example_user",
-                "session": "retrieval_session"
-            }
-        )
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-        # Prepare the input for the retrieval graph
-        input_data = {
-            "query": "What is this document about?",
-        }
+from retrieval_graph import graph
 
-        # Invoke the assistant on the created thread
-        thread_id = thread["thread_id"] if isinstance(thread, dict) else thread.thread_id
-        async for event in client.runs.stream(
-            thread_id=thread_id,
-            assistant_id="retrieval_graph",
-            input=input_data,
-            stream_mode="updates" # streams updates as they occur
-        ):
-            print(f"Receiving event of type: {event.event}")
-            print(event.data)
-            print("\n")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+app = FastAPI(title="Agent App Demo")
 
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-if __name__ == "__main__":
-    asyncio.run(invoke_retrieval_assistant())
+class ChatRequest(BaseModel):
+    query: str
+
+@app.get("/")
+async def get_index():
+    return FileResponse("static/index.html")
+
+from fastapi.responses import FileResponse, StreamingResponse
+import json
+
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    input_data = {
+        "query": request.query,
+        "messages": []
+    }
+    
+    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    
+    async def event_generator():
+        try:
+            # version="v2" is required for astream_events in langgraph
+            async for event in graph.astream_events(input_data, config, version="v2"):
+                kind = event["event"]
+                tags = event.get("tags", [])
+                
+                # We specifically look for tokens streamed from the chat model
+                if kind == "on_chat_model_stream" and "response_model" in tags:
+                    content = event["data"]["chunk"].content
+                    if isinstance(content, str) and content:
+                        yield f"data: {json.dumps({'content': content})}\n\n"
+                        
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            print(f"Error during graph execution: {e}")
+            yield f"data: {json.dumps({'error': 'Sorry, an internal error occurred.'})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

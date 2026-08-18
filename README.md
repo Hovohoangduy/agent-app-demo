@@ -1,128 +1,82 @@
-# Agent App Demo
+# Agent App Demo (FastAPI + LangGraph RAG Chatbot)
 
-Prototype RAG application using LangGraph, LangChain, OpenAI embeddings/chat models, and a vector store backend.
+This is a Retrieval-Augmented Generation (RAG) prototype application built using **LangGraph**, **LangChain**, and OpenAI models. The application provides a modern web-based Chatbot interface using **FastAPI** as the backend and a **PostgreSQL (pgvector)** database for vector storage.
 
-The project currently defines two LangGraph graphs:
-
-- `indexer`: ingests document chunks into a vector store.
-- `retrieval_graph`: routes a user query, retrieves relevant documents when needed, and generates an answer.
+The chatbot features:
+- **Streaming**: Real-time typing effect responses (Server-Sent Events).
+- **Smart Routing**: Differentiates between general conversational questions (direct answers) and knowledge retrieval queries (executing the RAG pipeline).
+- **Modern UI**: Features an elegant Dark Mode, automatic Markdown rendering (bold text, lists, code blocks), and smooth micro-animations.
 
 ## Project Structure
 
 ```text
 .
-|-- main.py                    # Example LangGraph SDK client
+|-- main.py                    # Main Application (FastAPI Server)
 |-- requirements.txt           # Python dependencies
-|-- docker-compose.yml         # Local pgvector service
-|-- .env                       # Runtime secrets, not committed
-|-- data/
-|   |-- rag_paper.pdf          # Source/sample PDF
-|   `-- test.txt               # Long sample text about ancient Greece
+|-- pyproject.toml             # Project configuration and dependencies
+|-- docker-compose.yml         # Configuration to run PostgreSQL (pgvector) via Docker
+|-- .env                       # Environment variables (API Keys, Configs)
+|
+|-- scripts/
+|   `-- ingest_docs.py         # Script to automatically crawl web documentation and ingest into the DB
+|
+|-- static/                    # Web Interface (Frontend)
+|   |-- index.html             # HTML structure of the chat page
+|   |-- style.css              # Styling, colors, animations (Dark mode)
+|   `-- script.js              # API communication logic, streaming, and markdown rendering
+|
 |-- json/
-|   |-- langgraph.json         # LangGraph graph registry
-|   `-- docSplits.json         # Pre-split sample documents
-`-- src/
-    |-- configuration.py       # Graph configuration dataclasses
-    |-- ingestion_graph.py     # Document ingestion graph
-    |-- retrieval.py           # Embedding and retriever factories
-    |-- retrieval_graph.py     # Query routing + RAG graph
-    |-- state.py               # LangGraph state and document reducer
-    `-- utils.py               # Document formatting and model loading helpers
+|   |-- langgraph.json         # (Deprecated) Old LangGraph registry
+|   `-- docSplits.json         # Sample static chunk data
+|
+`-- src/                       # Core LangGraph Agent logic
+    |-- configuration.py       # Configuration settings (model, retriever, default provider is pgvector)
+    |-- ingestion_graph.py     # Graph logic for document ingestion into the Vector DB
+    |-- retrieval.py           # VectorStore initialization (supports pgvector, chroma, supabase)
+    |-- retrieval_graph.py     # Graph for Smart Routing and RAG
+    |-- state.py               # Agent state management
+    `-- utils.py               # Utility functions for document formatting and model initialization
 ```
 
-## Runtime Configuration
+## Usage Instructions
 
-Create a `.env` file with the required API keys and backend settings:
+### 1. Prerequisites
+- **Python 3.9+** installed.
+- **Docker & Docker Compose** installed (to run the database).
+- An OpenAI API Key.
 
+### 2. Environment Variables Setup
+Create a `.env` file in the root directory of the project and add the following information:
 ```env
-OPENAI_API_KEY=your_openai_api_key
-SUPABASE_URL=your_supabase_url
-SUPABASE_SECRET_KEY=your_supabase_secret_key
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-The default configuration in `src/configuration.py` uses:
-
-- Embeddings: `openai/text-embedding-3-small`
-- Retriever provider: `chroma`
-- Document chunks file: `json/docSplits.json`
-- Query model: `gpt-5.4-mini`
-
-## Install Dependencies
-
+### 3. Install Dependencies
+Install the required dependencies via pip within a virtual environment (e.g., conda env):
 ```bash
 pip install -r requirements.txt
 ```
 
-## Vector Store
-
-The code supports two vector store paths:
-
-- Chroma, selected by default in `IndexConfiguration.retriever_provider`.
-- Supabase, selected by setting `retriever_provider` to `supabase`.
-
-`docker-compose.yml` currently starts a local PostgreSQL/pgvector service:
-
+### 4. Start the Database (PostgreSQL/pgvector)
+The system uses pgvector for document storage. Start the database using:
 ```bash
 docker compose up -d
 ```
+*Note: The database will run on port `6024` as configured by default in the docker-compose.yml file.*
 
-However, the default code path uses Chroma over HTTP at `localhost:8000`. To run with the current default, start a compatible Chroma server separately or update the configuration to use Supabase/pgvector consistently.
-
-## LangGraph Configuration
-
-The graph registry is located at:
-
-```text
-json/langgraph.json
-```
-
-It registers:
-
-```json
-{
-  "graphs": {
-    "indexer": "./src/ingestion_graph.py:graph",
-    "retrieval_graph": "./src/retrieval_graph.py:graph"
-  }
-}
-```
-
-Depending on how you run LangGraph CLI, you may need to pass this config path explicitly.
-
-## Intended Flow
-
-### 1. Ingest Documents
-
-`src/ingestion_graph.py` reads documents from graph state. If no documents are passed in, it loads the default chunk file from `json/docSplits.json`.
-
-The graph then creates a retriever and adds documents into the selected vector store.
-
-### 2. Ask a Question
-
-`src/retrieval_graph.py` runs this sequence:
-
-1. `check_query_type` decides whether the query can be answered directly or needs retrieval.
-2. `retrieve_documents` retrieves relevant chunks from the vector store.
-3. `generate_response` formats the retrieved chunks and asks the chat model to answer.
-
-### 3. Invoke from Client
-
-`main.py` is an example async LangGraph SDK client. It creates a thread and streams updates from the `retrieval_graph` assistant.
-
-## Current Notes
-
-The core logic has been adjusted so document ingestion uses the vector store directly and retrieval uses the retriever interface. A few environment-level items are still worth checking before running end-to-end:
-
-- The default vector store is Chroma, but `docker-compose.yml` starts pgvector instead of Chroma.
-- Some import paths assume `src` is directly on `PYTHONPATH`.
-- `main.py` defaults to `http://localhost:2026`; override it with `LANGGRAPH_DEPLOYMENT_URL` if your LangGraph server uses a different host or port.
-
-## Development Notes
-
-The local Python launcher in this environment was not available during validation, so syntax/runtime verification could not be completed here. Once Python is available, run:
-
+### 5. Data Ingestion
+Before running the chatbot, populate it with knowledge. Run the following script to automatically fetch documentation from web pages (LangChain, LangGraph docs) and load them into the database:
 ```bash
-python -m py_compile main.py src/configuration.py src/state.py src/retrieval.py src/ingestion_graph.py src/retrieval_graph.py src/utils.py
+python scripts/ingest_docs.py
+```
+*(Please wait a moment for the script to fetch, chunk the text, and save all the data into the DB).*
+
+### 6. Start the Web Server (FastAPI)
+Launch the backend Chatbot application using `uvicorn`:
+```bash
+uvicorn main:app --reload --port 8000
 ```
 
-Then run the LangGraph server and test ingestion before invoking `main.py`.
+### 7. Experience the Chatbot
+- Open your web browser and navigate to: **http://localhost:8000**
+- A modern chat interface will appear. You can try asking questions like *"What is LangGraph?"* or *"How does State work in LangGraph?"* to witness the real-time response speed, clearly formatted Markdown UI, and the AI assistant's information retrieval capabilities.

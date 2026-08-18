@@ -8,3 +8,7 @@ supabase
 beautifulsoup4
 langgraph-cli
 langchain-chroma
+fastapi
+uvicorn
+psycopg2-binary
+pgvector
